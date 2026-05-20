@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Literal, TypedDict
@@ -88,7 +89,12 @@ class Route(ABC):
     @abstractmethod
     async def is_authenticated(self, page: Page) -> bool:
         """Cheap probe: are we logged in right now? Used by the quick-path
-        when the runtime has a still-warm context."""
+        when the runtime has a still-warm context.
+
+        Implementations MAY navigate ``page`` (e.g., to a dashboard URL) to
+        get a reliable signal. Callers should treat the page as potentially
+        mutated after this returns.
+        """
 
     @abstractmethod
     async def fetch(
@@ -112,6 +118,27 @@ class ManifestEntry:
     module_path: str  # ``universal_routes.adapters.geico_com.policy_documents``
     class_name: str  # ``GeicoPolicyDocumentsRoute``
     meta: dict = field(default_factory=dict)
+
+
+_INPUT_TAG_RE = re.compile(r"<input\b[^>]*>", re.I)
+_VALUE_ATTR_RE = re.compile(r"""\bvalue=(['"])(.*?)\1""", re.I | re.S)
+
+
+def sanitize_html_for_debug(html: str) -> str:
+    """Redact credential-bearing data from an HTML page dump before disk write.
+
+    Replaces every ``<input ... value="...">`` with ``value="[redacted]"`` —
+    we err on the side of redacting more, since visible text inputs may
+    carry usernames, SSNs, member numbers, or other identifiers we never
+    want persisted, alongside the obvious password fields. Adapters MUST
+    call this on every ``page.content()`` they write to disk.
+    """
+
+    def _redact(match: re.Match) -> str:
+        tag = match.group(0)
+        return _VALUE_ATTR_RE.sub(r'value=\1[redacted]\1', tag)
+
+    return _INPUT_TAG_RE.sub(_redact, html)
 
 
 def validate_meta(meta: dict, source: str) -> None:

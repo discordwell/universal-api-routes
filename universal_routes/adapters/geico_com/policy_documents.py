@@ -19,7 +19,7 @@ from pathlib import Path
 import httpx
 from playwright.async_api import BrowserContext, Locator, Page
 
-from ...base import Artifact, Route
+from ...base import Artifact, Route, sanitize_html_for_debug
 
 log = logging.getLogger(__name__)
 
@@ -264,8 +264,11 @@ class GeicoPolicyDocumentsRoute(Route):
             DEBUG_DIR.mkdir(exist_ok=True)
             png = DEBUG_DIR / f"geico-{label}.png"
             html = DEBUG_DIR / f"geico-{label}.html"
-            await page.screenshot(path=str(png), full_page=True)
-            html.write_text(await page.content())
+            try:
+                await page.screenshot(path=str(png), full_page=True, timeout=5000)
+            except Exception as e:
+                log.warning("geico: failed to capture screenshot %s: %s", png, e)
+            html.write_text(sanitize_html_for_debug(await page.content()))
             log.warning("geico debug dump → %s, %s", png, html)
         except Exception as e:
             log.warning("geico: failed to dump debug artifacts: %s", e)

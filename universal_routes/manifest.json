@@ -24,6 +24,28 @@
         "description": "Auto-policy documents from ecams.geico.com (dec page, ID cards, billing).",
         "mfa_style": "code_input"
       }
+    },
+    {
+      "route_id": "usaa_com/policy_documents",
+      "module_path": "universal_routes.adapters.usaa_com.policy_documents",
+      "class_name": "UsaaPolicyDocumentsRoute",
+      "meta": {
+        "domain": "usaa.com",
+        "targets": [
+          "policy declarations",
+          "auto policy documents",
+          "auto insurance documents",
+          "renewal packet"
+        ],
+        "aliases": [
+          "dec page",
+          "policy",
+          "auto policy",
+          "renewal"
+        ],
+        "description": "USAA auto-policy documents (declarations, renewal packets, ID cards).",
+        "mfa_style": "code_input"
+      }
     }
   ]
 }
