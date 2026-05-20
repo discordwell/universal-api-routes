@@ -26,6 +26,27 @@
       }
     },
     {
+      "route_id": "usaa_com/id_cards",
+      "module_path": "universal_routes.adapters.usaa_com.id_cards",
+      "class_name": "UsaaIdCardsRoute",
+      "meta": {
+        "domain": "usaa.com",
+        "targets": [
+          "auto insurance id card",
+          "proof of insurance",
+          "insurance id card",
+          "auto id card"
+        ],
+        "aliases": [
+          "id card",
+          "wallet card",
+          "proof"
+        ],
+        "description": "USAA auto-insurance proof-of-insurance / wallet ID cards.",
+        "mfa_style": "code_input"
+      }
+    },
+    {
       "route_id": "usaa_com/policy_documents",
       "module_path": "universal_routes.adapters.usaa_com.policy_documents",
       "class_name": "UsaaPolicyDocumentsRoute",
