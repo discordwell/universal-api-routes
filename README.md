@@ -1,4 +1,18 @@
-# universal-api-routes
+# universal-api-routes — DEPRECATED
+
+This library has been **merged into**
+[github.com/discordwell/the-universal-api](https://github.com/discordwell/the-universal-api)
+as a top-level `universal_routes/` subpackage. Install / fork / read
+adapters from there.
+
+The history of this repo is preserved for archeology — none of the
+code below is loaded by the runtime any more. New auto-built adapters
+land in the unified repo (`universal_routes/adapters/`) of
+`discordwell/the-universal-api` instead.
+
+---
+
+## What this used to be
 
 Public adapter library for [The Universal API](https://theuniversalapi.com) — a runtime that turns any "personal docs behind a login" website into an API.
 
@@ -10,7 +24,7 @@ Each adapter teaches the runtime how to:
 
 The runtime never persists credentials or browser sessions. Adapters here only contain selectors, URLs, and flow logic — no secrets.
 
-## Repo shape
+## Repo shape (historical)
 
 ```
 universal_routes/
@@ -35,16 +49,6 @@ ROUTE_META = {
 ```
 
 The directory name under `adapters/` is the load-bearing domain key — `usaa_com/`, `geico_com/`, `amazon_com/`.
-
-## Safety bar
-
-- Adapters are **read-only**: no destructive actions (delete, transfer, post, purchase).
-- Adapters never log credentials. Only flow-relevant state (URLs, selectors, counts).
-- The runtime guarantees credentials and cookies stay in memory; adapters must not write them to disk.
-
-## Auto-generated routes
-
-When the runtime encounters a site with no adapter, it spawns Claude inside the production container, which builds an adapter live and force-pushes it to `main` here. Each auto-built adapter's first commit message names the originating job and includes Claude's reasoning.
 
 ## License
 
