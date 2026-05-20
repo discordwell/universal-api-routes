@@ -1,0 +1,25 @@
+[project]
+name = "universal-api-routes"
+version = "0.1.0"
+description = "Public adapter library for The Universal API."
+requires-python = ">=3.11"
+dependencies = [
+    "playwright>=1.48",
+    "httpx>=0.27",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100

@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "routes": [
+    {
+      "route_id": "geico_com/policy_documents",
+      "module_path": "universal_routes.adapters.geico_com.policy_documents",
+      "class_name": "GeicoPolicyDocumentsRoute",
+      "meta": {
+        "domain": "geico.com",
+        "targets": [
+          "policy declarations",
+          "auto insurance documents",
+          "policy docs",
+          "auto policy paperwork",
+          "geico documents"
+        ],
+        "aliases": [
+          "dec page",
+          "declarations page",
+          "auto policy",
+          "insurance card",
+          "id card"
+        ],
+        "description": "Auto-policy documents from ecams.geico.com (dec page, ID cards, billing).",
+        "mfa_style": "code_input"
+      }
+    }
+  ]
+}
