@@ -26,6 +26,16 @@ def test_matches_camelcase_keyword_without_separator():
     assert _ID_CARD_FILENAME_RE.search("INSURANCEID.pdf")
 
 
+def test_matches_concatenated_pascalcase_names():
+    """A keyword that ends an acronym run and butts straight into the next
+    PascalCase word (``IDCard`` → ``ID`` | ``Card``) must still match — these
+    are natural no-separator spellings of the route's advertised targets."""
+    assert _ID_CARD_FILENAME_RE.search("AutoIDCard.pdf")
+    assert _ID_CARD_FILENAME_RE.search("IDCard.pdf")
+    assert _ID_CARD_FILENAME_RE.search("InsuranceIDCard.pdf")
+    assert _ID_CARD_FILENAME_RE.search("MemberIDCard.pdf")
+
+
 def test_does_not_match_dec_pages():
     assert not _ID_CARD_FILENAME_RE.search("Policy Declarations.pdf")
     assert not _ID_CARD_FILENAME_RE.search("declarations-page.pdf")
@@ -52,3 +62,9 @@ def test_does_not_match_words_ending_in_id():
     assert not _ID_CARD_FILENAME_RE.search("rapid-response.pdf")
     assert not _ID_CARD_FILENAME_RE.search("Squid.pdf")
     assert not _ID_CARD_FILENAME_RE.search("candidate.pdf")
+    # The trailing acronym→word boundary must not re-open the same hole: a
+    # word merely *containing* "id" before a PascalCase word still must not
+    # match (the "id" here is mid-word, with no real boundary before it).
+    assert not _ID_CARD_FILENAME_RE.search("AndroidApp.pdf")
+    assert not _ID_CARD_FILENAME_RE.search("GridView.pdf")
+    assert not _ID_CARD_FILENAME_RE.search("MadridReport.pdf")

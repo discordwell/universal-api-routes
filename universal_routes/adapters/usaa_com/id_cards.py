@@ -26,20 +26,29 @@ log = logging.getLogger(__name__)
 
 # Match filenames like "Auto ID Card.pdf", "Proof of Insurance.pdf",
 # "wallet-card.pdf", "Insurance ID — Vehicle 1.pdf". Case-insensitive,
-# uses a custom boundary that treats ``_`` and ``-`` as separators so
-# ``auto_id_card.pdf`` matches but ``Identification.pdf`` does not.
+# with custom boundaries that treat ``_`` and ``-`` as separators (so
+# ``auto_id_card.pdf`` matches but ``Identification.pdf`` does not) and that
+# understand camelCase runs (so ``AutoIDCard.pdf`` / ``InsuranceID.pdf`` match
+# even with no separator).
 #
-# The third boundary alternative catches a camelCase transition (``InsuranceID``,
-# ``autoID``) with no separator before the keyword. It MUST stay case-sensitive:
-# the pattern as a whole is compiled with ``re.I``, which would otherwise widen
-# ``[A-Z]`` to match any letter and make ``(?<=[a-z0-9])(?=[A-Z])`` fire between
-# any two letters — so ``id`` would spuriously match inside "Hybrid", "Valid",
-# "rapid", etc. ``(?-i:...)`` scopes ignore-case off for just that lookaround.
-_BOUNDARY = r"(?:^|[^A-Za-z0-9]|(?-i:(?<=[a-z0-9])(?=[A-Z])))"
+# Both camelCase boundary alternatives MUST stay case-sensitive. The pattern as
+# a whole is compiled with ``re.I``, which widens ``[A-Z]`` to match any letter;
+# under that, ``(?<=[a-z0-9])(?=[A-Z])`` would fire between any two letters and
+# ``id`` would spuriously match inside "Hybrid", "Valid", "rapid", etc. The
+# ``(?-i:...)`` wrapper scopes ignore-case off for just those lookarounds.
+#
+# Leading boundary: start-of-string, a separator, or a lower→Upper camelCase
+# transition that starts a PascalCase word (``...Insurance`` → ``ID``).
+_LEADING = r"(?:^|[^A-Za-z0-9]|(?-i:(?<=[a-z0-9])(?=[A-Z])))"
+# Trailing boundary: end-of-string, a separator, or an acronym→word transition
+# so a keyword that ends a run of caps and butts straight into the next
+# PascalCase word still counts (``IDCard`` → ``ID`` | ``Card``). Without this,
+# a concatenated ``AutoIDCard.pdf`` would slip through the filter unmatched.
+_TRAILING = r"(?:$|[^A-Za-z0-9]|(?-i:(?<=[A-Z])(?=[A-Z][a-z])))"
 _ID_CARD_FILENAME_RE = re.compile(
-    _BOUNDARY
+    _LEADING
     + r"(?:id|i\.d\.|card|wallet|proof[\s_-]*of[\s_-]*insurance|insurance[\s_-]*id)"
-    + r"(?:$|[^A-Za-z0-9])",
+    + _TRAILING,
     re.I,
 )
 
