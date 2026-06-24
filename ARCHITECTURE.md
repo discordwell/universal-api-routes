@@ -48,7 +48,29 @@ user intent │  catalog lookup → pick Route → login() → mfa_required()? �
 | `is_authenticated()`  | Cheap probe for the warm-context quick path. *May navigate the page* — callers treat it as mutated afterward. |
 | `fetch()`             | Return `list[Artifact]`. Given an `httpx.AsyncClient` with the browser's cookies lifted in (for parallel binary downloads) and the `page` (for DOM scraping). |
 
-`Artifact` is one in-memory file (`filename`, `mimetype`, `data`, `id`).
+`Artifact` is one in-memory file (`filename`, `mimetype`, `data`, `id`). Its
+`filename` is sanitized on construction via `safe_filename()` (see below), so an
+adapter can hand it a raw server-supplied name without thinking about it.
+
+## Shared download primitives
+
+Adapters fetch binary documents from sites that don't always cooperate, so the
+fiddly "is this actually a file and what is it called" logic lives once in
+[`base.py`](./universal_routes/base.py) and is reused by every carrier
+(composition over copy-paste):
+
+- **`is_pdf_document(body, content_type)`** — guards against a logged-out portal
+  answering a document request with `200` + an HTML sign-in page (sometimes even
+  typed `application/pdf`). Returns `False` for HTML/empty bodies so junk never
+  reaches the user as `document.pdf`; accepts a `%PDF` magic prefix regardless of
+  content-type.
+- **`filename_from_content_disposition(disposition, url, fallback)`** — picks the
+  best name: RFC 5987 extended form (`filename*=UTF-8''…`, percent-decoded) →
+  plain `filename=` → URL tail → `fallback`.
+- **`safe_filename(name, fallback)`** — reduces a possibly hostile name to one
+  safe path segment (strips directory components, control characters, and leading
+  dots). `Artifact` applies it at construction, so every naming path is covered at
+  one chokepoint and no adapter can forget.
 
 ## The manifest (and why it can't drift)
 

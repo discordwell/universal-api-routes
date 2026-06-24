@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import urllib.parse
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Literal, TypedDict
@@ -45,7 +46,16 @@ REQUIRED_META_KEYS = ("domain", "targets", "description")
 
 @dataclass
 class Artifact:
-    """One file the route produces. Lives in memory until the user downloads."""
+    """One file the route produces. Lives in memory until the user downloads.
+
+    ``filename`` is sanitized on construction (see :func:`safe_filename`): it
+    usually originates from data the remote site controls — a
+    ``Content-Disposition`` header, anchor text, or a URL tail — and the runtime
+    writes it to disk and streams it to the user. Stripping directory
+    components, control characters, and leading dots here means no single
+    adapter can forget to do it and let a hostile portal smuggle a
+    path-traversal or dotfile name through.
+    """
 
     filename: str
     mimetype: str
@@ -53,6 +63,7 @@ class Artifact:
     id: str = ""
 
     def __post_init__(self) -> None:
+        self.filename = safe_filename(self.filename)
         if not self.id:
             self.id = self.filename
 
@@ -156,6 +167,86 @@ def sanitize_html_for_debug(html: str) -> str:
     html = _INPUT_TAG_RE.sub(_redact_input, html)
     html = _TEXTAREA_RE.sub(lambda m: f"{m.group(1)}[redacted]{m.group(3)}", html)
     return html
+
+
+def safe_filename(name: str, fallback: str = "document") -> str:
+    """Reduce a possibly hostile name to a safe single-segment filename.
+
+    Artifact filenames frequently come from data the remote site controls — a
+    ``Content-Disposition`` header, anchor text, or a URL tail — and the runtime
+    ultimately writes them to disk and streams them to the user. This strips
+    anything that could escape the intended directory or corrupt a
+    filesystem/log call:
+
+    * **Directory components** — everything up to the last ``/`` or ``\\`` is
+      dropped, so ``../../etc/passwd`` collapses to ``passwd``.
+    * **Control characters** — C0 controls (newline, NUL, tab, …) and DEL are
+      removed.
+    * **Leading dots / surrounding whitespace** — so a name can never reduce to
+      ``.`` / ``..`` or a hidden dotfile.
+
+    Ordinary names (``Auto Dec Page.pdf``, ``Insurance ID — Vehicle 1.pdf``)
+    pass through untouched. Returns ``fallback`` if nothing usable remains.
+    """
+    name = re.split(r"[\\/]", name or "")[-1]
+    name = "".join(ch for ch in name if ch >= " " and ch != "\x7f")
+    name = name.strip().lstrip(".").strip()
+    return name or fallback
+
+
+def is_pdf_document(body: bytes, content_type: str) -> bool:
+    """True if ``body`` is a real downloadable document, not an HTML page.
+
+    A site that has logged us out often answers a document request with ``200``
+    and an HTML sign-in / error page — sometimes even typed
+    ``application/pdf``. Returning that to the user as ``document.pdf`` is worse
+    than returning nothing, so the magic-byte / content-type acceptance is gated
+    on the body *not* starting with an HTML doctype. A ``%PDF`` magic prefix is
+    accepted regardless of content-type (a real PDF served with the wrong type
+    is still a PDF); a ``pdf`` / ``octet-stream`` content-type is accepted for
+    bodies without a recognizable magic number.
+    """
+    if not body:
+        return False
+    if body.lstrip().lower().startswith((b"<!doctype html", b"<html")):
+        return False
+    lowered = content_type.lower()
+    return body.startswith(b"%PDF") or "pdf" in lowered or "octet-stream" in lowered
+
+
+# ``filename*=`` (RFC 5987) carries a charset'lang' prefix and percent-encoding;
+# ``filename=`` is a plain quoted or unquoted token. Per the RFC the extended
+# form wins when both are present, so it is matched first.
+_CD_EXT_FILENAME_RE = re.compile(
+    r"filename\*\s*=\s*(?:[\w-]+'[\w-]*')?([^;]+)", re.I
+)
+_CD_PLAIN_FILENAME_RE = re.compile(
+    r'filename\s*=\s*"([^"]+)"|filename\s*=\s*([^";]+)', re.I
+)
+
+
+def filename_from_content_disposition(
+    disposition: str, url: str, fallback: str
+) -> str:
+    """Best-effort download filename from a ``Content-Disposition`` header.
+
+    Prefers the RFC 5987 extended form (``filename*=UTF-8''...``, percent-
+    decoded), then a plain ``filename=`` (quoted or unquoted), then the last
+    path segment of the URL (ignoring query and fragment), then ``fallback``.
+    The result is intentionally *not* sanitized here — :class:`Artifact` runs it
+    through :func:`safe_filename` on construction, so every naming path is
+    covered at one chokepoint.
+    """
+    ext = _CD_EXT_FILENAME_RE.search(disposition or "")
+    if ext:
+        return urllib.parse.unquote(ext.group(1).strip().strip('"'))
+    plain = _CD_PLAIN_FILENAME_RE.search(disposition or "")
+    if plain:
+        return (plain.group(1) or plain.group(2) or "").strip()
+    tail = url.split("?", 1)[0].split("#", 1)[0].rstrip("/").rsplit("/", 1)[-1]
+    if tail and "." in tail:
+        return tail
+    return fallback
 
 
 def validate_meta(meta: dict, source: str) -> None:

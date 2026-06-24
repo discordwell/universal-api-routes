@@ -19,7 +19,7 @@ from pathlib import Path
 import httpx
 from playwright.async_api import BrowserContext, Locator, Page
 
-from ...base import Artifact, Route, sanitize_html_for_debug
+from ...base import Artifact, Route, is_pdf_document, sanitize_html_for_debug
 
 log = logging.getLogger(__name__)
 
@@ -225,28 +225,58 @@ class GeicoPolicyDocumentsRoute(Route):
             try:
                 r = await http.get(href)
                 r.raise_for_status()
-                body = r.content
-                content_type = r.headers.get("content-type", "application/pdf")
-                if name.lower().endswith(".pdf"):
-                    filename = name
-                elif "pdf" in content_type:
-                    filename = (name or f"document-{idx}") + ".pdf"
-                else:
-                    filename = name or f"document-{idx}"
-                return Artifact(
-                    id=f"doc-{idx}",
-                    filename=filename,
-                    mimetype=content_type,
-                    data=body,
-                )
             except Exception as e:
                 log.warning("geico: failed to fetch %s: %s", href, e)
                 return None
+            return self._artifact_from_download(
+                name,
+                r.content,
+                r.headers.get("content-type", "application/pdf"),
+                idx,
+            )
 
         results = await asyncio.gather(
             *[fetch_one(n, h, i) for i, (n, h) in enumerate(unique)]
         )
-        return [a for a in results if a is not None]
+        artifacts = [a for a in results if a is not None]
+        if unique and not artifacts:
+            # Links were present but every download was an HTML error/login page
+            # (not a real document). Return nothing rather than a fake PDF so the
+            # runtime surfaces the miss instead of handing the user junk.
+            log.warning(
+                "geico: %d document links found but none returned a real document",
+                len(unique),
+            )
+        return artifacts
+
+    @staticmethod
+    def _artifact_from_download(
+        name: str, body: bytes, content_type: str, idx: int
+    ) -> Artifact | None:
+        """Build an ``Artifact`` from a downloaded blob, or ``None`` if it isn't a
+        real document.
+
+        Geico's document links can resolve to an HTML session-timeout / error
+        page returned with status ``200``; :func:`is_pdf_document` rejects those
+        so they never reach the user as ``document.pdf``. The ``.pdf`` suffix is
+        appended when the body or content-type says PDF but the link text didn't
+        already carry it. The final ``filename`` is sanitized by
+        :class:`Artifact` on construction."""
+        if not is_pdf_document(body, content_type):
+            return None
+        looks_pdf = "pdf" in content_type.lower() or body.startswith(b"%PDF")
+        if name.lower().endswith(".pdf"):
+            filename = name
+        elif looks_pdf:
+            filename = (name or f"document-{idx}") + ".pdf"
+        else:
+            filename = name or f"document-{idx}"
+        return Artifact(
+            id=f"doc-{idx}",
+            filename=filename,
+            mimetype=content_type,
+            data=body,
+        )
 
     async def _dismiss_cookie_banner(self, page: Page) -> None:
         try:

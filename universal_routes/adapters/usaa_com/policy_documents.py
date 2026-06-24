@@ -32,7 +32,13 @@ from typing import AsyncIterator
 import httpx
 from playwright.async_api import BrowserContext, Locator, Page
 
-from ...base import Artifact, Route, sanitize_html_for_debug
+from ...base import (
+    Artifact,
+    Route,
+    filename_from_content_disposition,
+    is_pdf_document,
+    sanitize_html_for_debug,
+)
 
 log = logging.getLogger(__name__)
 
@@ -1477,12 +1483,7 @@ class UsaaPolicyDocumentsRoute(Route):
 
     @staticmethod
     def _is_document_body(body: bytes, content_type: str) -> bool:
-        if not body:
-            return False
-        lowered = content_type.lower()
-        if body.lstrip().lower().startswith((b"<!doctype html", b"<html")):
-            return False
-        return body.startswith(b"%PDF") or "pdf" in lowered or "octet-stream" in lowered
+        return is_pdf_document(body, content_type)
 
     @staticmethod
     def _looks_like_document_response(resp) -> bool:
@@ -1504,14 +1505,9 @@ class UsaaPolicyDocumentsRoute(Route):
 
     @staticmethod
     def _name_from_headers(headers, url: str, fallback: str) -> str:
-        disposition = headers.get("content-disposition", "")
-        match = re.search(r'filename\*?=(?:UTF-8\'\')?"?([^";]+)', disposition, re.I)
-        if match:
-            return match.group(1).strip()
-        tail = url.split("?", 1)[0].rstrip("/").rsplit("/", 1)[-1]
-        if tail and "." in tail:
-            return tail
-        return fallback
+        return filename_from_content_disposition(
+            headers.get("content-disposition", ""), url, fallback
+        )
 
     async def _prepare_page(self, page: Page) -> None:
         return None
