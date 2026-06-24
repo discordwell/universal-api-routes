@@ -120,36 +120,62 @@ class ManifestEntry:
     meta: dict = field(default_factory=dict)
 
 
-_INPUT_TAG_RE = re.compile(r"<input\b[^>]*>", re.I)
-_VALUE_ATTR_RE = re.compile(r"""\bvalue=(['"])(.*?)\1""", re.I | re.S)
+# Match a full <input> tag while respecting quoted attribute values that may
+# themselves contain ">" (e.g. ``value="a > b"``). A naive ``[^>]*`` would stop
+# at that inner ">", leaving the tail of the value un-redacted in the dump.
+_INPUT_TAG_RE = re.compile(r"""<input\b(?:[^>"']|"[^"]*"|'[^']*')*>""", re.I)
+_QUOTED_VALUE_RE = re.compile(r"""\bvalue\s*=\s*(['"])(.*?)\1""", re.I | re.S)
+_UNQUOTED_VALUE_RE = re.compile(r"""\bvalue\s*=\s*[^\s"'>]+""", re.I)
+# A <textarea> holds free-typed text between its tags (not in an attribute) —
+# message boxes, notes, etc. that can carry PII just like an input value.
+_TEXTAREA_RE = re.compile(r"(<textarea\b[^>]*>)(.*?)(</textarea>)", re.I | re.S)
 
 
 def sanitize_html_for_debug(html: str) -> str:
     """Redact credential-bearing data from an HTML page dump before disk write.
 
-    Replaces every ``<input ... value="...">`` with ``value="[redacted]"`` —
-    we err on the side of redacting more, since visible text inputs may
-    carry usernames, SSNs, member numbers, or other identifiers we never
-    want persisted, alongside the obvious password fields. Adapters MUST
+    Replaces every ``<input ...>`` value — quoted (``value="x"``) *or* unquoted
+    (``value=x``) — with ``[redacted]``, and blanks the body of every
+    ``<textarea>``. We err on the side of redacting more, since visible text
+    inputs may carry usernames, SSNs, member numbers, or other identifiers we
+    never want persisted, alongside the obvious password fields. Adapters MUST
     call this on every ``page.content()`` they write to disk.
+
+    This is a deliberately conservative regex pass, not a full HTML parser: it
+    keeps non-``value`` attributes (``type``, ``name``, ``id``) intact so dumps
+    stay useful for debugging, while guaranteeing the user-entered ``value`` is
+    gone. Anything outside an ``<input>``/``<textarea>`` is left untouched.
     """
 
-    def _redact(match: re.Match) -> str:
+    def _redact_input(match: re.Match) -> str:
         tag = match.group(0)
-        return _VALUE_ATTR_RE.sub(r'value=\1[redacted]\1', tag)
+        tag = _QUOTED_VALUE_RE.sub(r'value=\1[redacted]\1', tag)
+        tag = _UNQUOTED_VALUE_RE.sub('value="[redacted]"', tag)
+        return tag
 
-    return _INPUT_TAG_RE.sub(_redact, html)
+    html = _INPUT_TAG_RE.sub(_redact_input, html)
+    html = _TEXTAREA_RE.sub(lambda m: f"{m.group(1)}[redacted]{m.group(3)}", html)
+    return html
 
 
 def validate_meta(meta: dict, source: str) -> None:
-    """Raise ValueError if ROUTE_META is missing required keys."""
+    """Raise ValueError if ROUTE_META is missing or malforms required keys."""
     missing = [k for k in REQUIRED_META_KEYS if k not in meta]
     if missing:
         raise ValueError(f"{source}: ROUTE_META missing keys {missing}")
     if not isinstance(meta["targets"], list) or not meta["targets"]:
         raise ValueError(f"{source}: ROUTE_META['targets'] must be a non-empty list")
+    if not all(isinstance(t, str) and t.strip() for t in meta["targets"]):
+        raise ValueError(f"{source}: ROUTE_META['targets'] must be non-empty strings")
     if not isinstance(meta["domain"], str) or "." not in meta["domain"]:
         raise ValueError(f"{source}: ROUTE_META['domain'] must be a host like 'geico.com'")
+    if not isinstance(meta["description"], str) or not meta["description"].strip():
+        raise ValueError(f"{source}: ROUTE_META['description'] must be a non-empty string")
+    aliases = meta.get("aliases")
+    if aliases is not None and (
+        not isinstance(aliases, list) or not all(isinstance(a, str) for a in aliases)
+    ):
+        raise ValueError(f"{source}: ROUTE_META['aliases'] must be a list of strings")
     mfa = meta.get("mfa_style", "none")
     if mfa not in ("code_input", "none", "novnc"):
         raise ValueError(f"{source}: ROUTE_META['mfa_style']={mfa!r} not recognized")

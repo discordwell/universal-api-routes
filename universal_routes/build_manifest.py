@@ -5,8 +5,9 @@ Run:
     python -m universal_routes.build_manifest
 
 The runtime reads ``manifest.json`` at boot for catalog lookup. Re-run this
-after adding, renaming, or deleting an adapter. A GitHub Actions workflow
-also re-runs it on every push to main as a safety net.
+after adding, renaming, or deleting an adapter. ``tests/test_manifest.py``
+asserts the committed ``manifest.json`` matches what ``discover()`` produces,
+so a stale manifest fails CI instead of shipping silently.
 """
 
 from __future__ import annotations
@@ -60,8 +61,12 @@ def _find_route_class(mod) -> type[Route] | None:
     return None
 
 
-def write_manifest(entries: list[ManifestEntry]) -> Path:
-    payload = {
+def build_payload(entries: list[ManifestEntry]) -> dict:
+    """Serialize discovered entries into the manifest's on-disk JSON shape.
+
+    Kept separate from :func:`write_manifest` so tests can compare against the
+    committed ``manifest.json`` without touching the filesystem."""
+    return {
         "version": 1,
         "routes": [
             {
@@ -73,6 +78,10 @@ def write_manifest(entries: list[ManifestEntry]) -> Path:
             for e in entries
         ],
     }
+
+
+def write_manifest(entries: list[ManifestEntry]) -> Path:
+    payload = build_payload(entries)
     MANIFEST_PATH.write_text(json.dumps(payload, indent=2, sort_keys=False) + "\n")
     return MANIFEST_PATH
 

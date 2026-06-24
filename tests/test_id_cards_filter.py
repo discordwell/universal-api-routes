@@ -4,8 +4,6 @@ docs."""
 
 from __future__ import annotations
 
-import re
-
 from universal_routes.adapters.usaa_com.id_cards import _ID_CARD_FILENAME_RE
 
 
