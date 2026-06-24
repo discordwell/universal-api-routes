@@ -28,7 +28,14 @@ log = logging.getLogger(__name__)
 # "wallet-card.pdf", "Insurance ID — Vehicle 1.pdf". Case-insensitive,
 # uses a custom boundary that treats ``_`` and ``-`` as separators so
 # ``auto_id_card.pdf`` matches but ``Identification.pdf`` does not.
-_BOUNDARY = r"(?:^|[^A-Za-z0-9]|(?<=[a-z0-9])(?=[A-Z]))"
+#
+# The third boundary alternative catches a camelCase transition (``InsuranceID``,
+# ``autoID``) with no separator before the keyword. It MUST stay case-sensitive:
+# the pattern as a whole is compiled with ``re.I``, which would otherwise widen
+# ``[A-Z]`` to match any letter and make ``(?<=[a-z0-9])(?=[A-Z])`` fire between
+# any two letters — so ``id`` would spuriously match inside "Hybrid", "Valid",
+# "rapid", etc. ``(?-i:...)`` scopes ignore-case off for just that lookaround.
+_BOUNDARY = r"(?:^|[^A-Za-z0-9]|(?-i:(?<=[a-z0-9])(?=[A-Z])))"
 _ID_CARD_FILENAME_RE = re.compile(
     _BOUNDARY
     + r"(?:id|i\.d\.|card|wallet|proof[\s_-]*of[\s_-]*insurance|insurance[\s_-]*id)"
